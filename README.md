@@ -1,94 +1,44 @@
 # problem-solving
 
-BOJ(acmicpc.net) 문제 풀이 작업 공간. 개인용 웹 페이지에서 문제 고르기 → VSCode로 풀기 → 채점·제출 → AC 확인 후 커밋까지 처리한다.
+BOJ 문제를 고르고, VSCode로 풀고, 제출하고, AC 기록을 커밋하는 개인용 웹 페이지.
+
+## 필요한 것
+
+- Linux 또는 WSL
+- `g++` (C++20), `python3` 3.11+ (venv, pip 사용 가능), `curl`, `git`
+- [solved.ac API 키](https://backstage.solved.ac/ko/developer/apps): 앱을 등록해 받는다.
+- git remote와 push 인증(PAT 또는 credential helper). 서버는 인증을 물어볼 수 없다.
+- Node.js는 따로 설치하지 않아도 된다. `setup.sh`가 `.tools/node`에 받는다.
+
+## 설치
 
 ```bash
-./setup.sh          # 처음 한 번: .venv(FastAPI) + 프론트엔드 빌드 (Node 는 .tools/node 에 받는다)
-./ps.sh             # 서버를 백그라운드로 띄우고(이미 떠 있으면 그대로) 브라우저로 연다
-./ps.sh stop | restart | status | logs
+cp .env.example .env    # SOLVEDAC_CLIENT_ID, SOLVEDAC_CLIENT_SECRET, BOJ_HANDLE 채우기
+./setup.sh              # .venv 생성, 패키지 설치, 프론트엔드 빌드
 ```
 
-## 준비
+## 사용법
 
-- `g++` (C++20), `python3`, `curl`, `git`
-- `.env` (커밋되지 않는다)
+```bash
+./ps.sh                 # 서버를 띄우고 브라우저로 연다 (http://127.0.0.1:8710)
+./ps.sh stop            # 끄기
+./ps.sh restart         # 다시 띄우기
+./ps.sh status          # 실행 중인지
+./ps.sh logs            # 로그 보기
+```
 
-  | 변수 | 용도 |
-  |---|---|
-  | `SOLVEDAC_CLIENT_ID`, `SOLVEDAC_CLIENT_SECRET` | solved.ac API 키. [solved.ac Backstage](https://backstage.solved.ac/ko/developer/apps)에서 앱을 등록해 받는다 |
-  | `BOJ_HANDLE` | 내 핸들. 뽑을 때 푼 문제를 빼고, AC를 확인할 때 쓴다 |
-  | `SOLVEDAC_QUERY` | (선택) 뽑기 기본 쿼리. 기본값은 `*g` |
+1. **홈**에서 문제를 뽑거나, 풀다 만 문제 / 나중에 풀기 / 대기 중인 문제를 고른다. 안 푼 문제의 티어와 태그는 보이지 않는다.
+2. **C++로 풀기** 또는 **Python으로 풀기**를 누르면 `problems/<번호>/main.cpp`(또는 `main.py`)가 VSCode에서 열린다.
+   - 지문은 `problem.md`, 예제는 `inputs/`, `outputs/`에 있다.
+   - 직접 만든 테스트는 `inputs/이름.in`(정답은 `outputs/이름.out`)에 넣는다.
+   - 메모는 문제 페이지 옆에 쓴다.
+   - 공용 코드는 `lib/`에 두고 `#include "x.cpp"` 또는 `import x`로 쓴다.
+3. **제출 준비** 페이지에서 순서대로 진행한다.
+   1. 테스트를 실행한다.
+   2. 제출 코드를 확인한다.
+   3. "제출본 저장 · 복사 · 제출 페이지 열기"를 누르고, BOJ에서 붙여넣어 제출한다.
+4. AC가 확인되면 `solution/boj/<번호>.<cpp|py>`와 `history/YYYY-MM.md`가 커밋되고 push된다.
+   - 서버가 solved.ac에서 자동으로 확인한다.
+   - BOJ에서 직접 확인했다면 **직접 AC 처리**를 누른다.
 
-- push는 HTTPS remote를 쓴다. 서버는 인증을 물어볼 수 없으므로 PAT나 credential helper를 미리 설정해 둔다.
-
-## 서버
-
-- 서버는 터미널과 분리되어 돌기 때문에 터미널을 닫아도 꺼지지 않는다.
-- 상태(기록, 메모, AC 대기)는 모두 `data/`와 `problems/`에 있어서, 서버를 껐다 켜도 이어서 동작한다.
-- 백엔드 코드를 고쳤으면 `./ps.sh restart`로 반영한다.
-- 서버가 꺼진 동안 열려 있던 탭에는 연결이 끊겼다는 배너가 뜬다. 그동안 쓴 메모는 브라우저에 임시로 보관했다가, 서버가 돌아오면 저장한다.
-- `./ps.sh`를 VSCode 터미널에서 실행하면 '풀기' 버튼이 그 VSCode에서 바로 파일을 연다. 그렇지 않으면 `vscode://` 링크로 연다.
-
-## 워크플로우
-
-1. **문제 고르기 (홈).** 현재 문제, 풀다 만 문제, 나중에 풀기, 대기 중인 문제를 이어서 풀거나 새로 뽑는다.
-   - 기본 쿼리는 `*g oj:boj -@BOJ_HANDLE`이다.
-     - `oj:boj`를 붙이는 이유: solved.ac는 DOJ, JUNGOL 같은 다른 저지 문제도 다룬다.
-     - 쿼리 문법은 solved.ac 검색과 같다. `*g5..g3`(티어), `s#1000..`(맞힌 사람 수), `#dp`(태그), `lang:ko` 등을 쓸 수 있다.
-     - 로그인 없는 검색은 쿼리 100자, 8단어까지만 허용된다.
-   - **안 푼 문제의 티어와 태그는 서버가 아예 보내지 않는다.** AC를 받으면 공개된다.
-2. **풀기.** 'C++로 풀기'나 'Python으로 풀기'를 누르면 `problems/<번호>/main.cpp`(또는 `main.py`)를 템플릿으로 만들고 VSCode로 연다.
-   - 지문은 `problem.md`, 예제는 `inputs/sample*.in`, `outputs/sample*.out`에 있다.
-   - 직접 만든 테스트는 `inputs/이름.in`에 넣는다. 정답 `outputs/이름.out`이 없으면 채점하지 않고 실행만 한다.
-   - 메모는 지문 옆에 쓴다. `problems/<번호>/memo.md`에 자동으로 저장되고, VSCode에서 고쳐도 반영된다.
-3. **제출 준비.** 제출 준비 페이지에서 순서대로 진행한다.
-   1. 번들 그대로 테스트한다.
-   2. 제출 코드를 확인한다. `lib/`의 파일이 펼쳐진 상태로 보인다.
-   3. 제출본을 저장하고, 코드를 클립보드에 복사하고, BOJ 제출 페이지를 연다. 제출 버튼은 직접 누른다.
-   4. 서버가 15분 동안 30초마다 solved.ac에서 AC를 확인한다. 확인되면 제출본을 `solution/boj/<번호>.<cpp|py>`로 커밋하고 push한다. 브라우저를 닫거나 서버를 재시작해도 이어서 확인한다.
-      - BOJ에서 AC를 직접 확인했다면 "직접 AC 처리"를 누른다. solved.ac 확인 없이 AC로 기록하고 커밋한다. 제출본을 저장하지 않았으면 지금 코드의 번들을 커밋한다.
-      - 이 파일 맨 위에는 문제 번호, 이름, 난이도, 푼 날짜, 문제 링크가 주석(`//` 또는 `#`)으로 붙는다.
-      - 같은 커밋에 월별 기록 `history/YYYY-MM.md`(날짜, 번호, 제목, 난이도 표)도 갱신해서 넣는다.
-      - 커밋 메시지는 `YYYY-MM-DD: BOJ {번호}`(푼 날짜)이다.
-      - Python 파일의 shebang과 인코딩 선언은 그대로 맨 앞에 둔다.
-
-**문제 상태**
-
-| 상태 | 뜻 |
-|---|---|
-| 대기 | 뽑거나 추가한 뒤 아직 시작하지 않음 |
-| 풀이 중 | 현재 문제 (하나뿐) |
-| 풀다 만 | 다른 문제를 시작해서 자동으로 멈춘 것 |
-| 나중에 풀기 | 직접 미룬 것 (사유를 적을 수 있다) |
-| 스킵 | 풀지 않기로 함 (사유) |
-| AC | 맞음. 이때부터 티어와 태그가 보인다 |
-
-**채점과 번들**
-
-- **판정:** PASS, WA, RE, TLE, CE가 있다. 정답 파일이 없는 입력은 SKIP이다. 단 런타임 에러와 강제 종료는 정답이 없어도 실패로 본다.
-- **비교:** 줄 끝 공백·탭 1개, 파일 끝 빈 줄 1개, 마지막 개행 유무, CRLF는 무시한다.
-- **시간:** 시간 제한을 넘기면 TLE이고, 제한의 5배(최소 5초)가 지나면 강제로 종료한다. 메모리는 `/usr/bin/time`으로 잰다.
-- **C++ 번들:** 로컬 `#include "..."`를 펼친다. 파일은 문제 폴더, `lib/` 순서로 찾고, 같은 파일은 한 번만 넣는다. `#include <...>`는 맨 위로 모은다.
-- **Python 번들:** 로컬 모듈(문제 폴더나 `lib/`의 `.py`)을 파일 앞에서 `sys.modules`에 등록한다. 그래서 원래 `import` 줄을 고치지 않고 그대로 쓸 수 있다.
-- **AC 판정:** solved.ac 검색 `id:<번호> @BOJ_HANDLE`로 확인한다. 이 방법은 "그 문제를 푼 적이 있는지"만 알려준다. 그래서 이미 푼 문제는 바로 AC로 보인다.
-
-**제출을 자동화하지 않는 이유**
-- BOJ에는 제출 API가 없다.
-- `/submit`은 robots.txt에서 막혀 있다.
-- 로그인 페이지에 reCAPTCHA가 있다.
-- 이용약관(2026-11-20 시행) 제11조와 제23조가 허용 범위를 넘는 자동화를 금지한다.
-
-## 폴더 구조
-
-| 경로 | 내용 | 커밋 |
-|---|---|---|
-| `ps.sh`, `setup.sh` | 서버 실행·관리, 설치와 빌드 | ✓ |
-| `web/server/psweb/` | FastAPI 백엔드 | ✓ |
-| `web/client/` | React + Vite + TypeScript 프론트엔드 | ✓ |
-| `lib/` | 공용 코드. C++은 `#include "x.cpp"`, Python은 `import x`로 쓴다. 제출할 때 펼쳐진다 | ✓ |
-| `solution/boj/` | AC를 받은 BOJ 제출본 (`<번호>.cpp`, `<번호>.py`) | ✓ |
-| `history/` | 월별 풀이 기록 `YYYY-MM.md` (날짜, 번호, 제목, 난이도). AC를 받을 때마다 DB에서 다시 만든다 | ✓ |
-| `problems/<번호>/` | 문제별 작업 폴더: 풀이, `problem.md`, `memo.md`, `inputs/` `outputs/` `answers/` | ✗ |
-| `data/` | 문제 기록 DB(`ps.db`), 서버 로그와 PID | ✗ |
-
-프론트엔드를 고칠 때는 `./ps.sh dev`를 쓴다. Vite 개발 서버(5173)가 뜨고 코드를 고치면 바로 반영된다. 배포용 빌드는 `./setup.sh`로 한다.
+`./ps.sh`를 VSCode 터미널에서 실행하면 '풀기' 버튼이 그 VSCode에서 바로 파일을 연다.
