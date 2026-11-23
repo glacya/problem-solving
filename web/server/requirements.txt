@@ -1,0 +1,4 @@
+fastapi==0.165.0
+uvicorn==0.54.0
+# Python 이 SQLite 없이 빌드된 경우를 위한 대체 바인딩 (표준 sqlite3 가 있으면 쓰지 않는다)
+pysqlite3-binary==0.5.4.post2; sys_platform == "linux" and platform_machine == "x86_64"
