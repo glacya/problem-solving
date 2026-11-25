@@ -103,6 +103,34 @@ def problem(pid):
         raise
 
 
+def solved_problems(handle):
+    """그 핸들이 푼 BOJ 문제 전부 (메타 목록, 번호순). 50개씩 나눠 받는다 (페이지당 3 unit).
+
+    1000문제면 20번 요청하므로 몇 초 걸린다. 첫 페이지로 전체 수를 알고 나머지는 몇 개씩 동시에 받는다.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    q = f"@{handle} oj:boj"
+
+    def page(n):
+        return get("/api/v4/problems", q=q, page=n, sort="id", direction="asc")
+
+    first = page(1)
+    size = first.get("pageSize") or 50
+    pages = -(-first.get("total", 0) // size)
+    results = [first]
+    if pages > 1:
+        with ThreadPoolExecutor(4) as ex:
+            results += list(ex.map(page, range(2, pages + 1)))
+    out = {}
+    for r in results:
+        for p in r.get("problems", []):
+            m = meta_of(p)
+            if m is not None:
+                out[m["id"]] = m
+    return [out[k] for k in sorted(out)]
+
+
 def solved_by(pid, handle):
     """그 핸들이 문제를 푼 적이 있는지 (특정 제출의 결과가 아니다)."""
     return get("/api/v4/problems", q=f"id:{pid} @{handle}").get("total", 0) > 0

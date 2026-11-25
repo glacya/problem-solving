@@ -12,8 +12,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import boj, bundle, db, judge, solvedac, watcher, workspace
-from .config import CLIENT_DIST, LANGS, default_query, env, normalize_query
+from . import backfill, boj, cleanup, bundle, db, judge, solvedac, watcher, workspace
+from .config import CLIENT_DIST, LANGS, SOURCE_LANGS, default_query, env, normalize_query
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
@@ -104,6 +104,8 @@ def api_error(fn):
             raise HTTPException(502, str(e)) from None
         except bundle.BundleError as e:
             raise HTTPException(400, str(e)) from None
+        except backfill.BackfillError as e:
+            raise HTTPException(e.status, str(e)) from None
     return wrap
 
 
@@ -121,6 +123,7 @@ def settings():
         "hasKey": bool(env("SOLVEDAC_CLIENT_ID") and env("SOLVEDAC_CLIENT_SECRET")),
         "defaultQuery": default_query(),
         "langs": [{"id": k, "label": v["label"], "boj": v["boj"]} for k, v in LANGS.items()],
+        "sourceLangs": [{"id": k, "label": v[0]} for k, v in SOURCE_LANGS.items()],
     }
 
 
@@ -326,6 +329,47 @@ def watch(pid: int):
 def unwatch(pid: int):
     need(pid)
     return public(db.upsert(pid, watch_until=None))
+
+
+# ---- 예전 소스 모으기 ----
+
+@app.get("/api/backfill/missing")
+@api_error
+def backfill_missing():
+    """푼 문제 중 solution/ 에 소스가 없는 것. solved.ac 를 여러 번 부르므로 그 페이지에서만 요청한다."""
+    return backfill.missing()
+
+
+@app.get("/api/backfill/{pid}")
+@api_error
+def backfill_lookup(pid: int):
+    return backfill.lookup(pid)
+
+
+class Backfill(BaseModel):
+    date: str
+    lang: str
+    code: str
+
+
+@app.post("/api/backfill/{pid}")
+@api_error
+def backfill_add(pid: int, body: Backfill):
+    return backfill.add(pid, body.date, body.lang, body.code)
+
+
+# ---- 풀이 폴더 정리 ----
+
+@app.get("/api/cleanup")
+def cleanup_preview():
+    """지금 정리하면 지워질 풀이 폴더 (AC 를 받고 마지막 제출일로부터 3일 이상 지난 것)."""
+    return {"keepDays": cleanup.KEEP_DAYS, "candidates": cleanup.candidates()}
+
+
+@app.post("/api/cleanup")
+def cleanup_run():
+    with watcher.commit_lock:
+        return {"removed": cleanup.run()}
 
 
 # ---- 프론트엔드 ----

@@ -17,7 +17,7 @@ export interface Problem {
   updated_at: string;
   started_at: string | null;
   submitted_at: string | null;
-  solved_at: string | null;
+  solved_at: string | null; // 푼 날짜 YYYY-MM-DD (시각은 저장하지 않는다)
   level: number | null; // 푼 문제만 (안 푼 문제는 서버가 보내지 않는다)
   tags: string[] | null; // 푼 문제만
   watching: boolean; // 서버가 AC 를 확인하는 중
@@ -54,6 +54,33 @@ export interface Settings {
   hasKey: boolean;
   defaultQuery: string;
   langs: { id: Lang; label: string; boj: string }[];
+  sourceLangs: { id: string; label: string }[]; // 예전 소스를 추가할 때 고르는 언어 (확장자)
+}
+
+/** 푼 문제 하나 (solved.ac 메타). 푼 문제라 티어와 태그가 있다. */
+export interface SolvedMeta {
+  id: number;
+  title: string;
+  level: number;
+  tags: string[];
+  solved_count: number | null;
+}
+
+export interface Missing {
+  handle: string;
+  solved: number; // 푼 문제 수
+  local: number; // 그중 solution/ 에 소스가 있는 수
+  problems: SolvedMeta[]; // 소스가 없는 문제
+}
+
+export interface BackfillInfo {
+  id: number;
+  title: string;
+  solved: boolean;
+  level: number | null; // 안 푼 문제는 서버가 보내지 않는다
+  tags: string[] | null;
+  files: string[]; // 이미 있는 solution 파일
+  statusUrl: string | null; // BOJ 에서 내 AC 제출 보기 (브라우저로 직접 연다)
 }
 
 export interface Bundle {
@@ -128,6 +155,15 @@ export const api = {
   memo: (id: number) => call<Memo>(`/problems/${id}/memo`),
   saveMemo: (id: number, text: string) => call<Memo>(`/problems/${id}/memo`, { method: "PUT", body: { text } }),
   health: () => call<{ ok: boolean }>("/health"),
+  missing: () => call<Missing>("/backfill/missing"),
+  backfillInfo: (id: number) => call<BackfillInfo>(`/backfill/${id}`),
+  backfill: (id: number, date: string, lang: string, code: string) =>
+    call<{ id: number; path: string; history: string; historyFiles: string[] }>(`/backfill/${id}`, {
+      body: { date, lang, code },
+    }),
+  cleanupPreview: () =>
+    call<{ keepDays: number; candidates: { id: number; title: string; last: string }[] }>("/cleanup"),
+  cleanup: () => call<{ removed: { id: number; title: string; last: string }[] }>("/cleanup", { body: {} }),
 };
 
 /** 서버 연결 상태. 끊기면 5초마다 다시 확인한다. */
@@ -143,6 +179,17 @@ export const useHealth = () =>
 export const useSettings = () => useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: 60_000 });
 export const useProblems = () => useQuery({ queryKey: ["problems"], queryFn: api.problems });
 export const useDetail = (id: number) => useQuery({ queryKey: ["problem", id], queryFn: () => api.detail(id) });
+
+/** 소스가 없는 푼 문제. 오래 걸리므로 이 목록을 쓰는 페이지에서만 받고, 탭을 오가도 다시 받지 않는다 (새로 불러오기 버튼). */
+export const useMissing = () =>
+  useQuery({
+    queryKey: ["backfill-missing"],
+    queryFn: api.missing,
+    staleTime: Infinity,
+    gcTime: 60 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
 
 /** 문제 상태를 바꾸는 요청 뒤에 목록과 상세를 다시 불러온다. */
 export function useProblemMutation<A, R>(fn: (a: A) => Promise<R>) {

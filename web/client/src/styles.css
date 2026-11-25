@@ -190,3 +190,25 @@ input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transpare
 .table { width: 100%; border-collapse: collapse; }
 .table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+
+/* 소스 모으기 */
+input[type="date"], select {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 7px; padding: 5px 9px;
+}
+select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
+.backfill-info { min-height: 28px; }
+.code-input {
+  width: 100%; resize: vertical; color: var(--fg); background: var(--code-bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, "JetBrains Mono", "D2Coding", Consolas, monospace;
+  font-size: 13px; line-height: 1.5; tab-size: 4; min-height: 240px;
+}
+.code-input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
+
+/* 기록 필터 */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.filters .tabs { margin: 0; }
+.filters .grow { flex: 1; min-width: 180px; }
+.period-nav { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.period-label { font-weight: 600; min-width: 140px; text-align: center; }
+.pager { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; margin-top: 12px; }

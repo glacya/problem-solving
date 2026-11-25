@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS problems (
     updated_at    TEXT NOT NULL,
     started_at    TEXT,
     submitted_at  TEXT,
-    solved_at     TEXT
+    solved_at     TEXT              -- 푼 날짜 YYYY-MM-DD (시각은 저장하지 않는다)
 );
 """
 
@@ -51,6 +51,10 @@ _COLUMNS = {
     "commit_log": "TEXT NOT NULL DEFAULT ''",
 }
 _migrated = False
+
+
+def today():
+    return datetime.date.today().isoformat()
 
 
 def now(delta_minutes=0):
@@ -69,6 +73,8 @@ def connect():
         for col, decl in _COLUMNS.items():
             if col not in have:
                 con.execute(f"ALTER TABLE problems ADD COLUMN {col} {decl}")
+        # 예전에는 푼 시각까지 저장했다. 푼 기록은 날짜만 쓴다.
+        con.execute("UPDATE problems SET solved_at = substr(solved_at, 1, 10) WHERE length(solved_at) > 10")
         con.commit()
         _migrated = True
     return con
@@ -124,7 +130,7 @@ def set_status(pid, status, reason=None):
                         (now(), pid))
             con.execute("UPDATE problems SET started_at = COALESCE(started_at, ?) WHERE id = ?", (now(), pid))
         if status == "solved":
-            con.execute("UPDATE problems SET solved_at = ?, watch_until = NULL WHERE id = ?", (now(), pid))
+            con.execute("UPDATE problems SET solved_at = ?, watch_until = NULL WHERE id = ?", (today(), pid))
         if reason is None and status in ("queued", "current", "paused", "solved"):
             reason = ""
         if reason is None:

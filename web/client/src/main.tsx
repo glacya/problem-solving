@@ -10,6 +10,8 @@ import Home from "./pages/Home";
 import ProblemPage from "./pages/ProblemPage";
 import SubmitPage from "./pages/SubmitPage";
 import History from "./pages/History";
+import Backfill from "./pages/Backfill";
+import BackfillAdd from "./pages/BackfillAdd";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: true, retry: 1 } },
@@ -25,6 +27,8 @@ const router = createBrowserRouter([
       { path: "problems/:id", element: <ProblemPage /> },
       { path: "problems/:id/submit", element: <SubmitPage /> },
       { path: "history", element: <History /> },
+      { path: "backfill", element: <Backfill /> },
+      { path: "backfill/add", element: <BackfillAdd /> },
     ],
   },
 ]);

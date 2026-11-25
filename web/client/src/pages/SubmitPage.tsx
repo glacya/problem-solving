@@ -11,7 +11,7 @@ import {
   type Problem,
   type TestResult,
 } from "../api";
-import { CopyButton, ErrorBox, LaterButton, StatusBadge, Tags, Tier, formatDate } from "../components";
+import { CopyButton, ErrorBox, LaterButton, StatusBadge, Tags, Tier, formatDate, formatDay } from "../components";
 import MemoEditor from "../Memo";
 
 export default function SubmitPage() {
@@ -184,7 +184,7 @@ function Steps({ p, lang, bojLang }: { p: Problem; lang: Lang; bojLang: string }
         </p>
         {p.status === "solved" ? (
           <div className="ok-box">
-            <b>AC</b> {formatDate(p.solved_at)} <Tier level={p.level} /> <Tags tags={p.tags} />
+            <b>AC</b> {formatDay(p.solved_at)} <Tier level={p.level} /> <Tags tags={p.tags} />
             {p.commit_log && <pre className="log">{p.commit_log}</pre>}
           </div>
         ) : (

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, openEditorResult, useProblemMutation, useProblems, useSettings, type Lang, type Problem } from "../api";
-import { ErrorBox, LaterButton, ProblemLink, SkipButton, StatusBadge, Tags, Tier, formatDate } from "../components";
+import { ErrorBox, LaterButton, ProblemLink, SkipButton, StatusBadge, Tags, Tier, formatDate, formatDay } from "../components";
 
 export default function Home() {
   const problems = useProblems();
@@ -44,7 +44,7 @@ export default function Home() {
                 <Tier level={p.level} />
                 <Tags tags={p.tags} />
                 <span className="spacer" />
-                <span className="muted small">{formatDate(p.solved_at)}</span>
+                <span className="muted small">{formatDay(p.solved_at)}</span>
               </li>
             ))}
           </ul>

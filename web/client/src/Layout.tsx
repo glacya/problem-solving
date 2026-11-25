@@ -15,6 +15,7 @@ export default function Layout() {
             문제
           </NavLink>
           <NavLink to="/history">기록</NavLink>
+          <NavLink to="/backfill">소스 모으기</NavLink>
           <span className="spacer" />
           {settings.data && (
             <span className="muted small">

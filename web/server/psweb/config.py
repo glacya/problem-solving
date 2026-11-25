@@ -15,6 +15,21 @@ LANGS = {
     "py": {"label": "Python 3", "file": "main.py", "boj": "Python 3 / PyPy3"},
 }
 
+# solution/ 에 넣을 수 있는 언어 (확장자: 이름, 주석 기호). 예전에 푼 소스를 직접 추가할 때 고른다.
+SOURCE_LANGS = {
+    "cpp": ("C++", "//"),
+    "c": ("C", "//"),
+    "py": ("Python", "#"),
+    "java": ("Java", "//"),
+    "kt": ("Kotlin", "//"),
+    "rs": ("Rust", "//"),
+    "go": ("Go", "//"),
+    "js": ("JavaScript", "//"),
+    "cs": ("C#", "//"),
+    "rb": ("Ruby", "#"),
+    "swift": ("Swift", "//"),
+}
+
 
 def _read_env_file():
     out = {}

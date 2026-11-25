@@ -6,15 +6,16 @@ AC 가 보이면 제출본을 커밋 + push 한다. 상태는 DB 에만 있으�
 import logging
 import re
 import threading
+import time
 
 from . import db, gitops, history, solvedac, workspace
-from .config import env
+from .config import SOURCE_LANGS, env
 
 log = logging.getLogger("psweb.watcher")
 INTERVAL_S = 30
 WATCH_MINUTES = 15
 
-_confirm_lock = threading.Lock()      # 요청('지금 확인')과 스레드가 동시에 커밋하지 않게
+commit_lock = threading.Lock()        # 요청('지금 확인', 소스 추가)과 스레드가 동시에 커밋하지 않게
 _stop = threading.Event()
 
 
@@ -23,11 +24,11 @@ def with_header(code, lang, p):
 
     Python 은 shebang 과 인코딩 선언이 첫 두 줄 안에 있어야 하므로 그 다음에 넣는다.
     """
-    c = "//" if lang == "cpp" else "#"
+    c = SOURCE_LANGS.get(lang, ("", "//"))[1]
     info = [
         f"{c} BOJ {p['id']} - {p['title']}",
         f"{c} 난이도: {history.tier_name(p['level'])}",
-        f"{c} 푼 날짜: {(p['solved_at'] or db.now())[:10]}",
+        f"{c} 푼 날짜: {p['solved_at'] or db.today()}",
         f"{c} https://www.acmicpc.net/problem/{p['id']}",
     ]
     lines = code.splitlines(keepends=True)
@@ -49,7 +50,7 @@ def confirm_ac(pid, manual=False, fallback_code=None):
     handle = env("BOJ_HANDLE")
     if not handle and not manual:
         return {"solved": False, "message": ".env 에 BOJ_HANDLE 을 설정하세요."}
-    with _confirm_lock:
+    with commit_lock:
         p = db.get(pid)
         if p is None:
             return {"solved": False, "message": f"{pid} 는 기록에 없습니다."}
@@ -69,8 +70,9 @@ def confirm_ac(pid, manual=False, fallback_code=None):
         source = snap.read_text(encoding="utf-8") if snap.exists() else fallback_code
         if source is not None:
             files = {gitops.solution_rel(pid, p["language"]): with_header(source, p["language"], p)}
-            files.update(history.build())              # 월별 기록도 같은 커밋에
-            commit = gitops.commit_files(files, gitops.commit_message(p["solved_at"][:10], pid))
+            # 그 달의 기록만 같은 커밋에 (다른 달은 '소스 모으기' 로 바뀌었을 수 있고, 사용자가 직접 커밋한다)
+            files.update(history.build_month(p["solved_at"][:7]))
+            commit = gitops.commit_files(files, gitops.commit_message(p["solved_at"], pid))
         else:
             commit = {"ok": False, "log": "제출본이 없어 커밋하지 않았습니다."}
         db.upsert(pid, commit_log=("" if commit["ok"] else "실패: ") + commit["log"])
@@ -78,8 +80,22 @@ def confirm_ac(pid, manual=False, fallback_code=None):
         return {"solved": True, "commit": commit}
 
 
+def _cleanup():
+    from . import cleanup                 # cleanup → backfill → watcher 순환 import 를 피한다
+    try:
+        with commit_lock:                 # 기록 페이지의 '정리' 요청과 겹치지 않게
+            cleanup.run()
+    except Exception:
+        log.exception("풀이 폴더 정리 실패")
+
+
 def _loop():
+    _cleanup()                            # 서버가 뜰 때 한 번, 그 뒤 몇 시간마다 (지울 것이 없으면 아무 일도 없다)
+    last_cleanup = time.monotonic()
     while not _stop.wait(INTERVAL_S):
+        if time.monotonic() - last_cleanup > 3600 * 6:
+            _cleanup()
+            last_cleanup = time.monotonic()
         for p in db.watching():
             try:
                 confirm_ac(p["id"])

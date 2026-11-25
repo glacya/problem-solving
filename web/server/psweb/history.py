@@ -49,6 +49,12 @@ def build():
     return out
 
 
+def build_month(month):
+    """{history/YYYY-MM.md: 내용} 한 달치. AC 커밋에는 그 달 파일만 넣는다."""
+    rel = f"history/{month}.md"
+    return {rel: build()[rel]}
+
+
 def write():
     """history/ 를 다시 쓰고, 쓴 파일의 저장소 기준 경로 목록을 돌려준다."""
     files = build()

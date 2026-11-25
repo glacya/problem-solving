@@ -1,6 +1,8 @@
 #include <bits/stdc++.h>
 using namespace std;
 using ll = long long;
+using ld = long double;
+using xll = __int128;
 
 int main() {
     ios::sync_with_stdio(false);

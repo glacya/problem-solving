@@ -167,6 +167,11 @@ export const LaterButton = (p: { onSubmit: (reason: string) => void; busy?: bool
   <ReasonButton label="나중에 풀기" placeholder="왜 미루는지 (선택)" {...p} />
 );
 
+/** 푼 날짜 (YYYY-MM-DD, 시각 없음) → "2026-11-24". */
+export function formatDay(s: string | null) {
+  return s ? s.slice(0, 10) : "";
+}
+
 export function formatDate(s: string | null) {
   if (!s) return "";
   const d = new Date(s);
