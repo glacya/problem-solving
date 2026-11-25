@@ -1,11 +1,17 @@
 // 예전에 푼 문제의 소스를 직접 붙여넣어 solution/ 에 둔다 (커밋은 사용자가 직접 한다). 제목과 난이도는 서버가 solved.ac 에서 받는다.
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, useSettings, type Missing } from "../api";
-import { ErrorBox, Tags, Tier } from "../components";
+import { api, useMissing, useSettings, type BojPage, type Missing } from "../api";
+import { BookmarkletLink, ErrorBox, Tags, Tier } from "../components";
 
 const LAST_LANG = "ps.backfill.lang";
+
+/** 서버의 gitops.solution_rel 과 같은 규칙: solution/boj/2000-2999/2300-2399/2345.cpp */
+function solutionPath(id: number, ext: string) {
+  const b = (size: number) => `${Math.floor(id / size) * size}-${Math.floor(id / size) * size + size - 1}`;
+  return `solution/boj/${b(1000)}/${b(100)}/${id}.${ext}`;
+}
 
 /** 붙여넣은 코드로 언어를 짐작한다. 직접 고른 뒤에는 바꾸지 않는다. */
 function guessLang(code: string): string | null {
@@ -27,7 +33,6 @@ function today() {
 
 export default function BackfillAdd() {
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const settings = useSettings();
 
@@ -37,6 +42,8 @@ export default function BackfillAdd() {
   const [lang, setLang] = useState(() => localStorage.getItem(LAST_LANG) ?? "cpp");
   const [langPicked, setLangPicked] = useState(false);
   const [code, setCode] = useState("");
+  const [page, setPage] = useState<BojPage | null>(null); // 붙여넣은 BOJ 소스 페이지
+  const [pageError, setPageError] = useState("");
 
   // 주소의 ?id= 가 바뀌면 (목록에서 다른 문제를 누르거나 '다음 문제') 입력칸도 따라간다.
   useEffect(() => setIdText(params.get("id") ?? ""), [params]);
@@ -44,6 +51,49 @@ export default function BackfillAdd() {
     const t = setTimeout(() => setId(/^\d{4,6}$/.test(idText) ? +idText : null), 400);
     return () => clearTimeout(t);
   }, [idText]);
+
+  /** BOJ 소스 페이지 HTML 을 해석해 번호, 날짜, 언어, 코드를 채운다. */
+  const applyPage = useCallback(
+    async (html: string) => {
+      let s: BojPage;
+      try {
+        s = await api.parsePage(html);
+      } catch {
+        setPage(null);
+        setPageError(
+          "BOJ 소스 페이지로 읽을 수 없습니다. 소스 페이지에서 Ctrl+U (페이지 소스 보기) → Ctrl+A → Ctrl+C 한 내용을 붙여넣으세요.",
+        );
+        return;
+      }
+      save.reset();
+      setPageError("");
+      setPage(s);
+      setIdText(String(s.problemId));
+      setId(s.problemId);
+      if (s.date) setDate(s.date);
+      if (s.ext) {
+        setLang(s.ext);
+        setLangPicked(true);
+      }
+      setCode(s.code);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // 입력칸 밖에서 Ctrl+V 해도 페이지로 받는다.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (!text) return;
+      e.preventDefault();
+      applyPage(text);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [applyPage]);
 
   const info = useQuery({
     queryKey: ["backfill-info", id],
@@ -66,16 +116,17 @@ export default function BackfillAdd() {
     },
   });
 
-  // 저장한 뒤 '다음 문제': 목록 캐시에서 지금 번호 다음 것 (목록을 열어 본 적이 있을 때만).
-  const missing = qc.getQueryData<Missing>(["backfill-missing"]);
-  const next = save.isSuccess
-    ? (missing?.problems.find((p) => p.id > (save.data?.id ?? 0)) ?? missing?.problems[0])
-    : undefined;
+  // '다음 문제': 소스가 없는 문제 중 지금 번호 다음 것.
+  const missing = useMissing();
+  const rows = missing.data?.problems ?? [];
+  const next = rows.find((p) => p.id > (id ?? 0) && p.id !== save.data?.id) ?? rows.find((p) => p.id !== id);
 
   const goNext = (nid: number) => {
     save.reset();
     setCode("");
     setLangPicked(false);
+    setPage(null);
+    setPageError("");
     setParams({ id: String(nid) });
   };
 
@@ -91,6 +142,54 @@ export default function BackfillAdd() {
           <Link to="/backfill" className="btn btn-ghost">
             ← 목록
           </Link>
+          {next && (
+            <button className={`btn ${save.isSuccess ? "btn-primary" : ""}`} onClick={() => goNext(next.id)}>
+              다음: {next.id} {next.title} →
+            </button>
+          )}
+        </div>
+
+        <div
+          className="paste-zone"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const f = e.dataTransfer.files[0];
+            if (f) f.text().then(applyPage);
+            else applyPage(e.dataTransfer.getData("text/plain"));
+          }}
+        >
+          <textarea
+            className="paste-input"
+            rows={2}
+            value=""
+            readOnly
+            onPaste={(e) => {
+              e.preventDefault();
+              applyPage(e.clipboardData.getData("text/plain"));
+            }}
+            placeholder="BOJ 소스 페이지 붙여넣기: 소스 페이지에서 Ctrl+U → Ctrl+A → Ctrl+C 한 뒤 여기서 Ctrl+V (저장한 .html 파일을 끌어 놓아도 됩니다)"
+          />
+          {page && (
+            <div className="small">
+              <b>
+                제출 {page.submissionId ?? "?"}번 · {page.problemId} {page.problemTitle} · {page.language} · {page.date}
+              </b>{" "}
+              을 불러왔습니다.
+              {page.warnings.map((w) => (
+                <div key={w} className="warn">
+                  {w}
+                </div>
+              ))}
+              {params.get("id") && params.get("id") !== String(page.problemId) && (
+                <div className="warn">목록에서 고른 {params.get("id")}번이 아니라 {page.problemId}번 페이지입니다.</div>
+              )}
+            </div>
+          )}
+          {pageError && <div className="warn small">{pageError}</div>}
+          <div className="muted small">
+            여러 문제를 넣을 때는 <BookmarkletLink /> 북마클릿이 편합니다 (사용법은 <Link to="/backfill">목록</Link> 위에 있습니다).
+          </div>
         </div>
 
         <form
@@ -98,6 +197,12 @@ export default function BackfillAdd() {
           onSubmit={(e) => {
             e.preventDefault();
             if (canSave) save.mutate();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && canSave) {
+              e.preventDefault();
+              save.mutate();
+            }
           }}
         >
           <div className="inline-form">
@@ -186,12 +291,12 @@ export default function BackfillAdd() {
 
           <div className="actions">
             <button className="btn btn-primary" disabled={!canSave}>
-              {save.isPending ? "저장하는 중…" : "저장"}
+              {save.isPending ? "저장하는 중…" : "저장 (Ctrl+Enter)"}
             </button>
             {id !== null && (
               <span className="muted small">
                 <code>
-                  solution/boj/{id}.{lang}
+                  {solutionPath(id, lang)}
                 </code>
                 {" "}에 저장합니다 (커밋하지 않음)
               </span>
@@ -202,18 +307,6 @@ export default function BackfillAdd() {
         {save.data && (
           <div className="ok-box">
             <code>{save.data.path}</code> 를 만들고 <code>{save.data.history}</code> 를 다시 썼습니다. 커밋은 직접 하세요.
-          </div>
-        )}
-        {save.isSuccess && (
-          <div className="actions">
-            {next ? (
-              <button className="btn btn-primary" onClick={() => goNext(next.id)}>
-                다음 문제: {next.id} {next.title}
-              </button>
-            ) : null}
-            <button className="btn" onClick={() => navigate("/backfill")}>
-              목록으로
-            </button>
           </div>
         )}
         <ErrorBox error={save.error} />

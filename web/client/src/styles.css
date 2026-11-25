@@ -212,3 +212,13 @@ select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transpar
 .period-nav { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .period-label { font-weight: 600; min-width: 140px; text-align: center; }
 .pager { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; margin-top: 12px; }
+.paste-zone { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+.paste-input {
+  width: 100%; resize: none; font: inherit; font-size: 13px; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; cursor: text;
+}
+.paste-input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
+.bookmarklet { display: inline-block; padding: 2px 10px; border: 1px solid var(--accent); border-radius: 999px; font-weight: 600; cursor: grab; white-space: nowrap; }
+.howto { background: var(--panel-2); border-radius: 8px; padding: 10px 14px; margin: 8px 0 12px; }
+.howto ol { margin: 6px 0; padding-left: 20px; }
+.howto li { margin: 3px 0; }

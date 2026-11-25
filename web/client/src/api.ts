@@ -70,7 +70,23 @@ export interface Missing {
   handle: string;
   solved: number; // 푼 문제 수
   local: number; // 그중 solution/ 에 소스가 있는 수
+  fetchedAt: string; // solved.ac 에서 푼 문제 목록을 받은 시각 (서버 캐시)
   problems: SolvedMeta[]; // 소스가 없는 문제
+}
+
+/** 서버가 해석한 BOJ 소스 페이지. */
+export interface BojPage {
+  submissionId: number | null;
+  user: string;
+  problemId: number;
+  problemTitle: string;
+  result: string;
+  accepted: boolean;
+  language: string; // BOJ 표기 ("C++20")
+  ext: string | null; // solution/ 확장자
+  date: string; // 제출 날짜
+  code: string;
+  warnings: string[];
 }
 
 export interface BackfillInfo {
@@ -155,7 +171,8 @@ export const api = {
   memo: (id: number) => call<Memo>(`/problems/${id}/memo`),
   saveMemo: (id: number, text: string) => call<Memo>(`/problems/${id}/memo`, { method: "PUT", body: { text } }),
   health: () => call<{ ok: boolean }>("/health"),
-  missing: () => call<Missing>("/backfill/missing"),
+  missing: (refresh = false) => call<Missing>(`/backfill/missing${refresh ? "?refresh=true" : ""}`),
+  parsePage: (html: string) => call<BojPage>("/backfill/parse", { body: { html } }),
   backfillInfo: (id: number) => call<BackfillInfo>(`/backfill/${id}`),
   backfill: (id: number, date: string, lang: string, code: string) =>
     call<{ id: number; path: string; history: string; historyFiles: string[] }>(`/backfill/${id}`, {
@@ -180,16 +197,14 @@ export const useSettings = () => useQuery({ queryKey: ["settings"], queryFn: api
 export const useProblems = () => useQuery({ queryKey: ["problems"], queryFn: api.problems });
 export const useDetail = (id: number) => useQuery({ queryKey: ["problem", id], queryFn: () => api.detail(id) });
 
-/** 소스가 없는 푼 문제. 오래 걸리므로 이 목록을 쓰는 페이지에서만 받고, 탭을 오가도 다시 받지 않는다 (새로 불러오기 버튼). */
+/** 소스가 없는 푼 문제. 서버가 solved.ac 목록을 캐시하므로 빠르다 (처음 한 번과 '새로 불러오기' 때만 몇 초).
+ *  북마클릿이 다른 탭에서 저장하므로 창으로 돌아오면 다시 받는다. */
 export const useMissing = () =>
-  useQuery({
-    queryKey: ["backfill-missing"],
-    queryFn: api.missing,
-    staleTime: Infinity,
-    gcTime: 60 * 60_000,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
+  useQuery({ queryKey: ["backfill-missing"], queryFn: () => api.missing(), retry: false });
+
+/** BOJ 채점 현황: 그 문제의 내 맞은 제출. */
+export const statusUrl = (id: number, handle: string) =>
+  `https://www.acmicpc.net/status?problem_id=${id}&user_id=${encodeURIComponent(handle)}&result_id=4`;
 
 /** 문제 상태를 바꾸는 요청 뒤에 목록과 상세를 다시 불러온다. */
 export function useProblemMutation<A, R>(fn: (a: A) => Promise<R>) {

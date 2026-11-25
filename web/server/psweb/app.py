@@ -9,10 +9,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
-from . import backfill, boj, cleanup, bundle, db, judge, solvedac, watcher, workspace
+from . import backfill, boj, cleanup, gitops, bundle, db, judge, solvedac, watcher, workspace
 from .config import CLIENT_DIST, LANGS, SOURCE_LANGS, default_query, env, normalize_query
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -20,6 +20,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 @asynccontextmanager
 async def lifespan(_app):
+    moved = gitops.migrate_layout()     # solution/ 폴더 구조가 바뀌었으면 옮긴다
+    if moved:
+        logging.getLogger("psweb").info("solution 파일 %d개를 새 폴더 구조로 옮겼습니다.", len(moved))
     watcher.start()        # 서버가 꺼져 있던 동안 남은 AC 확인도 이어서 한다
     yield
     watcher.stop()
@@ -29,6 +32,16 @@ app = FastAPI(title="ps", lifespan=lifespan)
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
+# BOJ 페이지에서 누르는 북마클릿만 부를 수 있는 경로 (다른 사이트는 여전히 막는다).
+BOJ_ORIGINS = ("https://www.acmicpc.net", "https://acmicpc.net")
+BOJ_PATHS = ("/api/backfill/page", "/api/backfill/next")
+
+
+def _cors(resp, origin):
+    resp.headers["Access-Control-Allow-Origin"] = origin
+    resp.headers["Vary"] = "Origin"
+    return resp
+
 
 @app.middleware("http")
 async def local_only(request: Request, call_next):
@@ -36,6 +49,17 @@ async def local_only(request: Request, call_next):
     origin = request.headers.get("origin")
     if host not in LOCAL_HOSTS:
         return JSONResponse({"detail": "local only"}, status_code=403)          # DNS rebinding 방지
+    if origin in BOJ_ORIGINS and request.url.path in BOJ_PATHS:
+        if request.method == "OPTIONS":       # CORS 사전 요청 (+ Chrome 의 로컬 네트워크 접근)
+            resp = Response(status_code=204)
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            resp.headers["Access-Control-Allow-Private-Network"] = "true"
+            resp.headers["Access-Control-Max-Age"] = "600"
+            return _cors(resp, origin)
+        if request.method == "POST" and not (request.headers.get("content-type") or "").startswith("application/json"):
+            return _cors(JSONResponse({"detail": "json only"}, status_code=415), origin)
+        return _cors(await call_next(request), origin)
     if request.method not in ("GET", "HEAD"):
         if origin and origin.split("://", 1)[-1].rsplit(":", 1)[0] not in LOCAL_HOSTS:
             return JSONResponse({"detail": "cross-origin"}, status_code=403)
@@ -335,9 +359,37 @@ def unwatch(pid: int):
 
 @app.get("/api/backfill/missing")
 @api_error
-def backfill_missing():
-    """푼 문제 중 solution/ 에 소스가 없는 것. solved.ac 를 여러 번 부르므로 그 페이지에서만 요청한다."""
-    return backfill.missing()
+def backfill_missing(refresh: bool = False):
+    """푼 문제 중 solution/ 에 소스가 없는 것. solved.ac 목록은 캐시를 쓰고 refresh 때만 다시 받는다 (몇 초 걸린다)."""
+    return backfill.missing(refresh)
+
+
+@app.get("/api/backfill/next")
+@api_error
+def backfill_next(after: int = 0):
+    """북마클릿: 다음으로 소스를 넣을 문제와 그 문제의 내 맞은 제출 (BOJ 채점 현황 주소)."""
+    return {"next": backfill.next_missing(after)}
+
+
+class Page(BaseModel):
+    html: str
+    confirm: bool = False
+
+
+@app.post("/api/backfill/parse")
+@api_error
+def backfill_parse(body: Page):
+    """붙여넣은 BOJ 소스 페이지 해석 (저장하지 않는다)."""
+    return backfill.parse_page(body.html)
+
+
+@app.post("/api/backfill/page")
+@api_error
+def backfill_page(body: Page):
+    """북마클릿: BOJ 소스 페이지를 받아 바로 저장하고 다음 문제를 알려 준다."""
+    if len(body.html) > 3_000_000:
+        raise HTTPException(413, "페이지가 너무 큽니다.")
+    return backfill.from_page(body.html, body.confirm)
 
 
 @app.get("/api/backfill/{pid}")

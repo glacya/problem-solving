@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import renderMathInElement from "katex/contrib/auto-render";
 import type { Problem, Statement, Status } from "./api";
+import { bookmarklet } from "./bojSource";
 
 const TIERS = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Ruby"];
 const ROMAN = ["V", "IV", "III", "II", "I"];
@@ -109,6 +110,26 @@ export function StatementView({ st }: { st: Statement }) {
         </section>
       ))}
     </div>
+  );
+}
+
+/** 북마크바로 끌어다 놓는 북마클릿 링크. React 는 javascript: 주소를 막으므로 DOM 에 직접 넣는다. */
+export function BookmarkletLink() {
+  const ref = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    ref.current?.setAttribute("href", bookmarklet(window.location.origin));
+  }, []);
+  return (
+    <a
+      ref={ref}
+      className="bookmarklet"
+      onClick={(e) => {
+        e.preventDefault();
+        alert("이 링크를 북마크바로 끌어다 놓은 뒤, BOJ 소스 페이지에서 그 북마크를 누르세요.");
+      }}
+    >
+      📥 PS 소스 추가
+    </a>
   );
 }
 
