@@ -1,19 +1,24 @@
 """제출한 문제의 AC 를 서버가 확인한다 (브라우저를 닫아도, 서버를 재시작해도 이어서).
 
 submit 할 때 DB 에 watch_until 을 적어 두면, 이 스레드가 그 시각까지 30초마다 solved.ac 를 확인하고
-AC 가 보이면 제출본을 커밋 + push 한다. 상태는 DB 에만 있으므로 서버가 다시 뜨면 남은 것을 이어서 본다.
+AC 가 보이면 제출본을 커밋한다 (push 는 하지 않는다). 상태는 DB 에만 있으므로 서버가 다시 뜨면 남은 것을 이어서 본다.
+
+제출본을 저장하지 않고 BOJ 에 바로 제출하는 경우도 있으므로, 풀이 중(current/paused)이고 풀이 파일을
+최근 EDIT_HOURS 시간 안에 고친 문제도 EDIT_INTERVAL_S 마다 확인한다. 이때는 지금 코드의 번들을 커밋한다.
 """
 import logging
 import re
 import threading
 import time
 
-from . import db, gitops, history, solvedac, workspace
-from .config import SOURCE_LANGS, env
+from . import bundle, db, gitops, history, solvedac, workspace
+from .config import LANGS, SOURCE_LANGS, env
 
 log = logging.getLogger("psweb.watcher")
 INTERVAL_S = 30
 WATCH_MINUTES = 15
+EDIT_HOURS = 3            # 제출본 없이도 확인하는 기간: 풀이 파일을 마지막으로 고친 뒤
+EDIT_INTERVAL_S = 120     # 그 확인 간격 (solved.ac 검색 3 unit)
 
 commit_lock = threading.Lock()        # 요청('지금 확인', 소스 추가)과 스레드가 동시에 커밋하지 않게
 _stop = threading.Event()
@@ -41,11 +46,41 @@ def with_header(code, lang, p):
     return "".join(lines[:keep]) + "\n".join(info) + "\n\n" + "".join(lines[keep:])
 
 
-def confirm_ac(pid, manual=False, fallback_code=None):
+def _source_langs(p):
+    """풀이 파일이 있는 언어. 기록된 언어를 먼저."""
+    order = [p["language"]] + [lang for lang in LANGS if lang != p["language"]]
+    return [lang for lang in order if lang in LANGS and workspace.source(p["id"], lang).exists()]
+
+
+def _current_bundle(p):
+    """제출본이 없을 때 커밋할 것: (지금 코드의 번들, 언어). 풀이 파일이 없으면 (None, None)."""
+    for lang in _source_langs(p):
+        try:
+            return bundle.bundle(workspace.source(p["id"], lang), lang)[0], lang
+        except bundle.BundleError as e:
+            log.warning("번들 실패 %s: %s", p["id"], e)
+    return None, None
+
+
+def recently_edited():
+    """제출본 없이 제출했을 수 있는 문제: 풀이 중이고 풀이 파일을 최근에 고친 것 (이미 감시 중인 것은 뺀다)."""
+    out = []
+    limit = time.time() - EDIT_HOURS * 3600
+    for p in db.list_all():
+        if p["status"] not in ("current", "paused") or (p["watch_until"] and p["watch_until"] > db.now()):
+            continue
+        if p["presolved"] == 1:        # 예전에 푼 문제는 solved.ac 가 처음부터 AC 라 쓰는 중인 코드를 커밋하게 된다
+            continue
+        if any(workspace.source(p["id"], lang).stat().st_mtime > limit for lang in _source_langs(p)):
+            out.append(p)
+    return out
+
+
+def confirm_ac(pid, manual=False):
     """AC 면 기록하고 제출본을 커밋한다. {'solved': bool, 'message'?, 'commit'?}.
 
-    manual=True 는 사용자가 BOJ 에서 AC 를 직접 확인했다는 뜻이다. solved.ac 확인을 건너뛰고,
-    제출본이 없으면 fallback_code(지금 코드의 번들)를 커밋한다.
+    manual=True 는 사용자가 BOJ 에서 AC 를 직접 확인했다는 뜻이다 (solved.ac 확인을 건너뛴다).
+    제출본(.submitted.*)이 없으면 지금 코드의 번들을 커밋한다 (제출본을 저장하지 않고 바로 제출한 경우).
     """
     handle = env("BOJ_HANDLE")
     if not handle and not manual:
@@ -54,27 +89,37 @@ def confirm_ac(pid, manual=False, fallback_code=None):
         p = db.get(pid)
         if p is None:
             return {"solved": False, "message": f"{pid} 는 기록에 없습니다."}
-        if p["status"] == "solved":
+        retry = p["status"] == "solved" and p["commit_log"].startswith("실패")
+        if p["status"] == "solved" and not retry:
             return {"solved": True, "commit": {"ok": True, "log": p["commit_log"] or "이미 AC 로 기록됨"}}
-        if not manual and not solvedac.solved_by(pid, handle):
-            return {"solved": False, "message": f"아직 solved.ac 에 {handle} 의 AC 가 보이지 않습니다. "
-                                                "BOJ 에서 AC 를 확인했다면 '직접 AC 처리' 를 누르세요."}
-
-        try:
-            meta = solvedac.problem(pid) or {}      # 티어/태그 (실패해도 AC 처리는 한다)
-        except solvedac.ApiError:
-            meta = {}
-        db.upsert(pid, **{k: meta[k] for k in ("level", "tags", "solved_count") if k in meta})
-        p = db.set_status(pid, "solved")
+        if not retry:                     # 커밋만 실패한 AC 는 다시 확인하지 않고 커밋만 다시 한다
+            if not manual and not solvedac.solved_by(pid, handle):
+                return {"solved": False, "message": f"아직 solved.ac 에 {handle} 의 AC 가 보이지 않습니다. "
+                                                    "BOJ 에서 AC 를 확인했다면 '직접 AC 처리' 를 누르세요."}
+            try:
+                meta = solvedac.problem(pid) or {}      # 티어/태그 (실패해도 AC 처리는 한다)
+            except solvedac.ApiError:
+                meta = {}
+            db.upsert(pid, **{k: meta[k] for k in ("level", "tags", "solved_count") if k in meta})
+            p = db.set_status(pid, "solved")
         snap = workspace.pdir(pid) / f".submitted.{p['language']}"
-        source = snap.read_text(encoding="utf-8") if snap.exists() else fallback_code
+        note = ""
+        if snap.exists():
+            source, lang = snap.read_text(encoding="utf-8"), p["language"]
+        else:
+            source, lang = _current_bundle(p)
+            note = "제출본이 없어 지금 코드의 번들을 커밋했습니다."
+            if lang and lang != p["language"]:
+                p = db.upsert(pid, language=lang)
         if source is not None:
-            files = {gitops.solution_rel(pid, p["language"]): with_header(source, p["language"], p)}
+            files = {gitops.solution_rel(pid, lang): with_header(source, lang, p)}
             # 그 달의 기록만 같은 커밋에 (다른 달은 '소스 모으기' 로 바뀌었을 수 있고, 사용자가 직접 커밋한다)
             files.update(history.build_month(p["solved_at"][:7]))
             commit = gitops.commit_files(files, gitops.commit_message(p["solved_at"], pid))
+            if note:
+                commit["log"] = note + "\n" + commit["log"]
         else:
-            commit = {"ok": False, "log": "제출본이 없어 커밋하지 않았습니다."}
+            commit = {"ok": False, "log": "제출본도 풀이 파일도 없어 커밋하지 않았습니다."}
         db.upsert(pid, commit_log=("" if commit["ok"] else "실패: ") + commit["log"])
         log.info("AC %s: %s", pid, commit["log"])
         return {"solved": True, "commit": commit}
@@ -92,11 +137,19 @@ def _cleanup():
 def _loop():
     _cleanup()                            # 서버가 뜰 때 한 번, 그 뒤 몇 시간마다 (지울 것이 없으면 아무 일도 없다)
     last_cleanup = time.monotonic()
+    last_edit_check = 0.0
     while not _stop.wait(INTERVAL_S):
         if time.monotonic() - last_cleanup > 3600 * 6:
             _cleanup()
             last_cleanup = time.monotonic()
-        for p in db.watching():
+        targets = db.watching()
+        if time.monotonic() - last_edit_check > EDIT_INTERVAL_S:
+            last_edit_check = time.monotonic()
+            try:
+                targets += recently_edited()
+            except Exception:
+                log.exception("최근 고친 문제 찾기 실패")
+        for p in targets:
             try:
                 confirm_ac(p["id"])
             except Exception:          # 네트워크 오류 등은 다음 차례에 다시 본다

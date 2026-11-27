@@ -263,7 +263,13 @@ def start(pid: int, body: Lang):
     if boj.load(pid) is None:
         boj.fetch(pid)
     path = workspace.ensure_source(pid, lang)
-    db.upsert(pid, language=lang)
+    fields = {"language": lang}
+    if need(pid)["presolved"] is None and env("BOJ_HANDLE"):
+        try:                    # 예전에 푼 문제면 제출본 없이 하는 자동 AC 확인에서 뺀다 (watcher.recently_edited)
+            fields["presolved"] = int(solvedac.solved_by(pid, env("BOJ_HANDLE")))
+        except solvedac.ApiError:
+            pass
+    db.upsert(pid, **fields)
     p = db.set_status(pid, "current")
     return {"problem": public(p), "path": str(path), "opened": workspace.open_in_editor(path),
             "editorUri": workspace.editor_uri(path)}
@@ -334,11 +340,9 @@ def mark_solved(pid: int, body: Lang):
     """
     p = need(pid)
     lang = need_lang(body.lang)
-    fallback = None
     if not (workspace.pdir(pid) / f".submitted.{p['language']}").exists():
-        db.upsert(pid, language=lang)
-        fallback = _bundle(pid, lang)["code"] if workspace.source(pid, lang).exists() else None
-    res = watcher.confirm_ac(pid, manual=True, fallback_code=fallback)
+        db.upsert(pid, language=lang)        # 제출본이 없으면 화면에서 고른 언어의 지금 코드를 번들해 커밋한다
+    res = watcher.confirm_ac(pid, manual=True)
     return {**res, "problem": public(db.get(pid))}
 
 

@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS problems (
 _COLUMNS = {
     "watch_until": "TEXT",          # 이 시각까지 서버가 AC 를 확인한다 (제출 후)
     "commit_log": "TEXT NOT NULL DEFAULT ''",
+    "presolved": "INTEGER",         # 풀기 시작할 때 solved.ac 에 이미 AC 였는지 (1/0, 모르면 NULL)
 }
 _migrated = False
 

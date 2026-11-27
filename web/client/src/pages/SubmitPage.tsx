@@ -179,13 +179,22 @@ function Steps({ p, lang, bojLang }: { p: Problem; lang: Lang; bojLang: string }
           </h2>
         </div>
         <p className="muted small">
-          제출하면 서버가 15분 동안 30초마다 solved.ac 를 확인하고, AC 가 보이면 제출본을 <code>solution/boj/{id}.{lang}</code> 로 커밋하고
-          push 합니다. 브라우저를 닫거나 서버를 재시작해도 이어서 확인합니다. 이전에 푼 문제는 바로 AC 로 보입니다.
+          제출본을 저장하면 서버가 15분 동안 30초마다 solved.ac 를 확인하고, AC 가 보이면 제출본을 <code>solution/boj/</code> 에
+          커밋합니다 (push 는 하지 않습니다). 제출본 없이 BOJ 에 바로 제출해도, 풀이 파일을 고친 뒤 3시간 동안은 2분마다 확인하고 지금 코드의
+          번들을 커밋합니다. 브라우저를 닫거나 서버를 재시작해도 이어서 확인합니다. 이전에 푼 문제는 바로 AC 로 보입니다.
         </p>
         {p.status === "solved" ? (
           <div className="ok-box">
             <b>AC</b> {formatDay(p.solved_at)} <Tier level={p.level} /> <Tags tags={p.tags} />
             {p.commit_log && <pre className="log">{p.commit_log}</pre>}
+            {p.commit_log.startsWith("실패") && (
+              <div className="actions">
+                <button className="btn" onClick={() => check.mutate()} disabled={check.isPending}>
+                  {check.isPending ? "커밋하는 중…" : "다시 커밋"}
+                </button>
+                <span className="muted small">제출본이 없으면 지금 코드의 번들을 커밋합니다.</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="actions">
@@ -197,7 +206,7 @@ function Steps({ p, lang, bojLang }: { p: Problem; lang: Lang; bojLang: string }
                 </button>
               </>
             ) : (
-              <button className="btn btn-ghost" onClick={() => watch.mutate()} disabled={!p.submitted_at}>
+              <button className="btn btn-ghost" onClick={() => watch.mutate()}>
                 15분 동안 확인
               </button>
             )}
@@ -211,7 +220,7 @@ function Steps({ p, lang, bojLang }: { p: Problem; lang: Lang; bojLang: string }
               title="solved.ac 확인 없이 AC 로 기록하고 커밋합니다"
               onClick={() => {
                 const what = p.submitted_at ? "저장한 제출본" : "지금 코드의 번들 (제출본을 저장하지 않았습니다)";
-                if (confirm(`BOJ 에서 AC 를 확인했나요?\n${what}을 solution/boj/${id}.${lang} 로 커밋합니다.`))
+                if (confirm(`BOJ 에서 AC 를 확인했나요?\n${what}을 solution/boj/ 에 커밋합니다.`))
                   markSolved.mutate();
               }}
             >

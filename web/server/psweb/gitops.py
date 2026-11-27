@@ -1,4 +1,4 @@
-"""AC 받은 제출본(solution/<저지>/)과 월별 기록(history/)만 커밋 + push 한다.
+"""AC 받은 제출본(solution/<저지>/)과 월별 기록(history/)만 커밋한다. push 는 하지 않는다 (사용자가 직접 한다).
 
 커밋 메시지: "YYYY-MM-DD: BOJ {번호}" (푼 날짜). 다른 스테이징된 변경은 섞지 않는다.
 """
@@ -72,7 +72,7 @@ def commit_message(date, pid, judge="boj"):
     return f"{date}: {judge.upper()} {pid}"
 
 
-def commit_files(files, message, push=True):
+def commit_files(files, message):
     """files: {저장소 기준 경로: 내용}. 이 파일들만 커밋한다."""
     for rel, text in files.items():
         path = ROOT / rel
@@ -91,10 +91,4 @@ def commit_files(files, message, push=True):
         if rc:
             return {"ok": False, "log": out}
         log.append(f"커밋: {message}")
-    if push:
-        rc, _ = _git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-        rc, out = _git("push", "-q") if rc == 0 else _git("push", "-q", "-u", "origin", "HEAD")
-        if rc:
-            return {"ok": False, "log": "\n".join(log + [f"push 실패: {out}"])}
-        log.append("push 완료")
     return {"ok": True, "log": "\n".join(log)}

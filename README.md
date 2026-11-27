@@ -7,7 +7,6 @@ BOJ 문제를 고르고, VSCode로 풀고, 제출하고, AC 기록을 커밋하�
 - Linux 또는 WSL
 - `g++` (C++20), `python3` 3.11+ (venv, pip 사용 가능), `curl`, `git`
 - [solved.ac API 키](https://backstage.solved.ac/ko/developer/apps): 앱을 등록해 받는다.
-- git remote와 push 인증(PAT 또는 credential helper). 서버는 인증을 물어볼 수 없다.
 - Node.js는 따로 설치하지 않아도 된다. `setup.sh`가 `.tools/node`에 받는다.
 
 ## 설치
@@ -37,7 +36,7 @@ cp .env.example .env    # SOLVEDAC_CLIENT_ID, SOLVEDAC_CLIENT_SECRET, BOJ_HANDLE
    1. 테스트를 실행한다.
    2. 제출 코드를 확인한다.
    3. "제출본 저장 · 복사 · 제출 페이지 열기"를 누르고, BOJ에서 붙여넣어 제출한다.
-4. AC가 확인되면 `solution/boj/<1000 단위>/<100 단위>/<번호>.<cpp|py>`(예: `solution/boj/2000-2999/2300-2399/2345.cpp`)와 `history/YYYY-MM.md`가 커밋되고 push된다.
+4. AC가 확인되면 `solution/boj/<1000 단위>/<100 단위>/<번호>.<cpp|py>`(예: `solution/boj/2000-2999/2300-2399/2345.cpp`)와 `history/YYYY-MM.md`가 커밋된다. push는 직접 한다.
    - 서버가 solved.ac에서 자동으로 확인한다.
    - BOJ에서 직접 확인했다면 **직접 AC 처리**를 누른다.
 
